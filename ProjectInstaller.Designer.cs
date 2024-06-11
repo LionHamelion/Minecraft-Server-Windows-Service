@@ -33,6 +33,7 @@
             // 
             // serviceProcessInstaller1
             // 
+            this.serviceProcessInstaller1.Account = System.ServiceProcess.ServiceAccount.LocalSystem;
             this.serviceProcessInstaller1.Password = null;
             this.serviceProcessInstaller1.Username = null;
             // 
@@ -41,6 +42,7 @@
             this.serviceInstaller1.Description = "Autostart minecraft server";
             this.serviceInstaller1.DisplayName = "Minecraft Server";
             this.serviceInstaller1.ServiceName = "MinecraftServerService";
+            this.serviceInstaller1.StartType = System.ServiceProcess.ServiceStartMode.Automatic;
             this.serviceInstaller1.AfterInstall += new System.Configuration.Install.InstallEventHandler(this.serviceInstaller1_AfterInstall);
             // 
             // ProjectInstaller
