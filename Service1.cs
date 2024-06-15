@@ -4,7 +4,9 @@ using System.ComponentModel;
 using System.Data;
 using System.Diagnostics;
 using System.IO;
+using System.IO.Pipes;
 using System.Linq;
+using System.Configuration;
 using System.ServiceProcess;
 using System.Text;
 using System.Threading;
@@ -15,26 +17,34 @@ namespace MinecraftServerService
     public partial class Service1 : ServiceBase
     {
         private Process minecraftProcess;
-        private readonly string javaPath = @"C:\Program Files\Java\jdk-22\bin\java.exe";
-        private readonly string serverJarPath = @"D:\Games\Minecraft\server-1.21-release-candidate-1\minecraft-server-1.21-release-candidate-1.jar";
-        private readonly string serverArgs = "-Xms1024M -Xmx2048M -jar minecraft-server-1.21-release-candidate-1.jar nogui";
-        private readonly string logFilePath = @"D:\Games\Minecraft\server-1.21-release-candidate-1\minecraft_server_log.txt";
+        private readonly string javaPath;
+        private readonly string serverJarPath;
+        private readonly string serverArgs;
+        private readonly string logFilePath;
+        private PipeHelper pipeHelper;
 
         public Service1()
         {
             InitializeComponent();
+            javaPath = ConfigurationManager.AppSettings["JavaPath"];
+            serverJarPath = ConfigurationManager.AppSettings["ServerJarPath"];
+            serverArgs = ConfigurationManager.AppSettings["ServerArgs"];
+            logFilePath = ConfigurationManager.AppSettings["LogFilePath"];
+            pipeHelper = new PipeHelper(OnInputReceived, Log);
         }
 
         protected override void OnStart(string[] args)
         {
             Log("Service starting...");
             StartMinecraftServer();
+            pipeHelper.StartPipeServers();
         }
 
         protected override void OnStop()
         {
             Log("Service stopping...");
             StopMinecraftServer();
+            pipeHelper.StopPipeServers();
         }
 
         private void StartMinecraftServer()
@@ -49,15 +59,31 @@ namespace MinecraftServerService
                         {
                             FileName = javaPath,
                             Arguments = serverArgs,
-                            WorkingDirectory = System.IO.Path.GetDirectoryName(serverJarPath),
+                            WorkingDirectory = Path.GetDirectoryName(serverJarPath),
                             CreateNoWindow = true,
                             UseShellExecute = false,
                             RedirectStandardOutput = true,
-                            RedirectStandardError = true
+                            RedirectStandardError = true,
+                            RedirectStandardInput = true
                         }
                     };
-                    minecraftProcess.OutputDataReceived += (sender, e) => Log(e.Data);
-                    minecraftProcess.ErrorDataReceived += (sender, e) => Log(e.Data);
+
+                    minecraftProcess.OutputDataReceived += (sender, e) =>
+                    {
+                        if (e.Data != null)
+                        {
+                            pipeHelper.WriteToPipe(e.Data);
+                            Log($"Minecraft output: {e.Data}");
+                        }
+                    };
+                    minecraftProcess.ErrorDataReceived += (sender, e) =>
+                    {
+                        if (e.Data != null)
+                        {
+                            pipeHelper.WriteToPipe(e.Data);
+                            Log($"Minecraft error: {e.Data}");
+                        }
+                    };
 
                     minecraftProcess.Start();
                     minecraftProcess.BeginOutputReadLine();
@@ -89,6 +115,22 @@ namespace MinecraftServerService
             }
         }
 
+        private void OnInputReceived(string input)
+        {
+            try
+            {
+                if (minecraftProcess != null && !minecraftProcess.HasExited)
+                {
+                    minecraftProcess.StandardInput.WriteLine(input);
+                    Log($"Command sent to Minecraft: {input}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"Error sending command to Minecraft: {ex.Message}");
+            }
+        }
+
         private void Log(string message)
         {
             try
@@ -106,3 +148,4 @@ namespace MinecraftServerService
         }
     }
 }
+
